@@ -1,0 +1,388 @@
+*&---------------------------------------------------------------------*
+*& Report  Z_CANCEL_TO
+*&
+*&---------------------------------------------------------------------*
+REPORT z_cancel_to.
+
+*---------------------------------------------------------------------*
+*       CLASS lcl_handle_events DEFINITION
+*---------------------------------------------------------------------*
+* Define a local class for handling events of cl_salv_table
+*---------------------------------------------------------------------*
+CLASS lcl_handle_events DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      on_user_command FOR EVENT added_function OF cl_salv_events
+        IMPORTING e_salv_function,
+   
+ENDCLASS.                    "lcl_handle_events DEFINITION
+
+*---------------------------------------------------------------------*
+*       CLASS lcl_handle_events IMPLEMENTATION
+*---------------------------------------------------------------------*
+* Implement the events for handling the events of cl_salv_table
+*---------------------------------------------------------------------*
+CLASS lcl_handle_events IMPLEMENTATION.
+  METHOD on_user_command.
+    PERFORM user_command USING e_salv_function text-i08.
+  ENDMETHOD.                    "on_user_command
+  
+ENDCLASS.                    "lcl_handle_events IMPLEMENTATION
+
+*--------------------------------------------------------------------*
+* Global Objects
+*--------------------------------------------------------------------*
+DATA go_alv        TYPE REF TO cl_salv_table.
+DATA go_columns    TYPE REF TO cl_salv_columns_table.
+DATA go_column     TYPE REF TO cl_salv_column.
+DATA go_selections TYPE REF TO cl_salv_selections.
+
+DATA: gr_events TYPE REF TO lcl_handle_events.
+
+*--------------------------------------------------------------------*
+* Global table for display
+*--------------------------------------------------------------------*
+DATA gt_table      TYPE STANDARD TABLE OF ltap. "Beispiel TA-Positionen
+
+TABLES: ltap.
+
+************************************************************************
+* SELECTION SCREENS                                                    *
+************************************************************************
+
+PARAMETERS p_lgnum TYPE lgnum OBLIGATORY.
+
+SELECT-OPTIONS: s_matnr FOR ltap-matnr,
+                s_vltyp FOR ltap-vltyp,
+                s_nltyp FOR ltap-nltyp.
+
+************************************************************************
+* SELECTION SCREENS - END                                              *
+************************************************************************
+
+************************************************************************
+* EVENTS                                                               *
+************************************************************************
+*----------------------------------------------------------------------*
+* INITIALIZATON event                                                  *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN ON VALUE-REQUEST FOR event                       *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* START-OF-SELECTION event                                             *
+*----------------------------------------------------------------------*
+
+START-OF-SELECTION.
+
+  PERFORM start_selection.
+
+  PERFORM initialize_alv.
+
+  PERFORM display_alv.
+
+  PERFORM get_selections.
+
+*----------------------------------------------------------------------*
+* END-OF-SELECTION event                                               *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* AT LINE-SELECTION event                                              *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* AT USER-COMMAND event                                                *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* TOP-OF-PAGE event                                                    *
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+* END-OF-PAGE event                                                    *
+*----------------------------------------------------------------------*
+************************************************************************
+* EVENTS - END                                                         *
+************************************************************************
+
+************************************************************************
+* SUBROUTINES                                                          *
+************************************************************************
+*&---------------------------------------------------------------------*
+FORM start_selection.
+*&---------------------------------------------------------------------*
+
+  SELECT * FROM ltap
+           INTO TABLE gt_table
+          WHERE lgnum EQ p_lgnum
+            AND matnr IN s_matnr
+            AND vltyp IN s_vltyp
+            AND nltyp IN s_nltyp
+            AND pquit NE 'X'.
+
+  SORT gt_table ASCENDING BY tanum tapos.
+
+ENDFORM.                    " start_selection.
+
+*&---------------------------------------------------------------------*
+FORM initialize_alv.
+*&---------------------------------------------------------------------*
+  DATA lo_message TYPE REF TO cx_salv_msg.
+
+  TRY.
+      cl_salv_table=>factory(
+      IMPORTING
+        r_salv_table = go_alv
+      CHANGING
+        t_table      = gt_table ).
+
+      go_columns = go_alv->get_columns( ).
+
+*--------------------------------------------------------------------*
+* Settings
+*--------------------------------------------------------------------*
+      PERFORM layout_settings.
+      PERFORM optimize_column_width.
+      PERFORM hide_column. "blendet Spalten aus - z.B. den Mandant
+      PERFORM set_toolbar.
+      PERFORM display_settings.
+      PERFORM register_handler.
+      go_alv->get_selections( )->set_selection_mode(
+                                 value = if_salv_c_selection_mode=>multiple ).
+
+    CATCH cx_salv_msg INTO lo_message.
+      " error handling
+
+  ENDTRY.
+
+ENDFORM.                    " INITIALIZE_ALV
+
+*--------------------------------------------------------------------*
+FORM display_alv.
+*--------------------------------------------------------------------*
+  go_alv->display( ).
+
+ENDFORM.                    " DISPLAY_ALV
+
+*--------------------------------------------------------------------*
+FORM layout_settings.
+*--------------------------------------------------------------------*
+  DATA lo_layout_settings TYPE REF TO cl_salv_layout.
+  DATA ls_layout_key      TYPE salv_s_layout_key.
+
+  lo_layout_settings = go_alv->get_layout( ). "Get instance
+
+  ls_layout_key-report = sy-repid.
+  lo_layout_settings->set_key( ls_layout_key ).
+
+  lo_layout_settings->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+FORM optimize_column_width.
+*--------------------------------------------------------------------*
+
+  go_columns->set_optimize( ).
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+FORM hide_column.
+*--------------------------------------------------------------------*
+  DATA not_found TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      go_column = go_columns->get_column( 'MANDT' ).
+      go_column->set_visible( if_salv_c_bool_sap=>false ).
+    CATCH cx_salv_not_found INTO not_found.
+      " error handling
+  ENDTRY.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+FORM set_toolbar.
+*--------------------------------------------------------------------*
+  DATA lo_functions TYPE REF TO cl_salv_functions_list.
+
+  lo_functions = go_alv->get_functions( ).
+  lo_functions->set_all( ).
+
+  go_alv->set_screen_status(
+      pfstatus      =  'SALV_STANDARD'
+      report        =  sy-repid
+      set_functions = go_alv->c_functions_all ).
+
+ENDFORM.                    " SET_TOOLBAR
+
+*--------------------------------------------------------------------*
+FORM display_settings.
+*--------------------------------------------------------------------*
+  DATA lo_display_settings TYPE REF TO cl_salv_display_settings.
+
+  lo_display_settings = go_alv->get_display_settings( ).
+  lo_display_settings->set_striped_pattern( if_salv_c_bool_sap=>true ).
+  lo_display_settings->set_list_header( 'Stornieren Transportaufträge' ).
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_SELECTIONS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_selections.
+
+  DATA lt_rows TYPE salv_t_row.
+  DATA ls_rows TYPE LINE OF salv_t_row.
+  DATA ls_table TYPE ltap.
+  DATA lt_selected TYPE TABLE OF ltap.
+
+  go_selections = go_alv->get_selections( ).
+
+  lt_rows = go_selections->get_selected_rows( ).
+
+  LOOP AT lt_rows INTO ls_rows.
+
+    READ TABLE gt_table INTO ls_table
+                        INDEX ls_rows.
+
+    APPEND ls_table TO lt_selected.
+
+  ENDLOOP.
+
+ENDFORM.                    " GET_SELECTIONS
+*&---------------------------------------------------------------------*
+*&      Form  USER_COMMAND
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM user_command USING i_function TYPE salv_de_function
+                        i_text     TYPE string.
+
+  DATA lt_rows TYPE salv_t_row.
+  DATA ls_rows TYPE LINE OF salv_t_row.
+  DATA ls_table TYPE ltap.
+  DATA lt_selected TYPE TABLE OF ltap.
+  DATA ls_canc  TYPE ltap_cancl.
+  DATA lt_canc  TYPE TABLE OF ltap_cancl.
+
+  go_selections = go_alv->get_selections( ).
+
+  lt_rows = go_selections->get_selected_rows( ).
+
+  LOOP AT lt_rows INTO ls_rows.
+
+    READ TABLE gt_table INTO ls_table
+                        INDEX ls_rows.
+
+    APPEND ls_table TO lt_selected.
+
+  ENDLOOP.
+
+  CHECK lt_selected IS NOT INITIAL.
+
+  CALL FUNCTION 'MESSAGES_INITIALIZE'.
+
+  LOOP AT lt_selected INTO ls_table.
+
+    CLEAR ls_canc.
+    REFRESH lt_canc.
+    MOVE-CORRESPONDING ls_table TO ls_canc.
+    APPEND ls_canc TO lt_canc.
+
+    CALL FUNCTION 'L_TO_CANCEL'
+      EXPORTING
+        i_lgnum       = p_lgnum
+        i_tanum       = ls_canc-tanum
+*       I_SOLEX       = 0
+*       I_CANCL       = ' '
+*       I_SUBST       = ' '
+        i_qname       = sy-uname
+        i_update_task = ' '
+        i_commit_work = 'X'
+      TABLES
+        t_ltap_cancl  = lt_canc
+*   EXCEPTIONS
+*       TO_CONFIRMED  = 1
+*       TO_DOESNT_EXIST                    = 2
+*       ITEM_CONFIRMED                     = 3
+*       ITEM_DOESNT_EXIST                  = 4
+*       FOREIGN_LOCK  = 5
+*       DOUBLE_LINES  = 6
+*       NOTHING_TO_DO = 7
+*       XFELD_WRONG   = 8
+*       SU_MOVEMENT_PARTLY_CONFIRMED       = 9
+*       UPDATE_WITHOUT_COMMIT              = 10
+*       NO_AUTHORITY  = 11
+*       OTHERS        = 12
+      .
+    IF sy-subrc <> 0.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb = sy-msgid
+          msgty = sy-msgty
+          txtnr = sy-msgno
+          msgv1 = sy-msgv1
+          msgv2 = sy-msgv2
+          msgv3 = sy-msgv3
+          msgv4 = sy-msgv4.
+
+    ELSE.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb = 'L1'
+          msgty = 'S'
+          txtnr = '033'
+          msgv1 = ls_canc-tanum
+          msgv2 = ls_canc-tapos.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  CALL FUNCTION 'MESSAGES_SHOW'
+    EXPORTING
+      i_use_grid      = 'X'
+      i_amodal_window = ''
+    EXCEPTIONS
+      no_messages     = 2
+      OTHERS          = 3.
+
+  PERFORM start_selection.
+
+  go_alv->refresh( ).
+
+ENDFORM.                    " USER_COMMAND
+*&---------------------------------------------------------------------*
+*&      Form  REGISTER_HANDLER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM register_handler .
+
+  DATA: lr_events TYPE REF TO cl_salv_events_table.
+
+  lr_events = go_alv->get_event( ).
+
+  CREATE OBJECT gr_events.
+
+  SET HANDLER gr_events->on_user_command FOR lr_events.
+
+  SET HANDLER gr_events->on_before_user_command FOR lr_events.
+
+  SET HANDLER gr_events->on_after_user_command FOR lr_events.
+
+ENDFORM.                    " REGISTER_HANDLER
+************************************************************************
+* SUBROUTINES - END                                                    *
+************************************************************************
