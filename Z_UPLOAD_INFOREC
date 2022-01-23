@@ -1,0 +1,162 @@
+*&---------------------------------------------------------------------*
+*& Report Z_UPLOAD_INFOREC
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z_UPLOAD_INFOREC.
+
+* Neuen Infosatz anlegen?
+PARAMETERS: lv_creat TYPE abap_bool DEFAULT abap_true.
+* Testlauf?
+PARAMETERS: lv_test TYPE abap_bool DEFAULT abap_true.
+
+* Nummer des Einkaufsinfosatzes
+PARAMETERS: lv_infnr TYPE infnr.
+* Materialnummer
+PARAMETERS: lv_matnr TYPE matnr.
+* Lieferant
+PARAMETERS: lv_lifnr TYPE lifnr.
+* Basismengeneinheit
+PARAMETERS: lv_meins TYPE meins.
+* Normalmenge
+PARAMETERS: lv_norbm TYPE norbm.
+* Bestellmengeneinheit
+PARAMETERS: lv_bstme TYPE bstme.
+* Zähler für die Umrechnung BPRME in BME
+PARAMETERS: lv_bpumz TYPE bpumz.
+* Nenner für die Umrechnung BPRME in BME
+PARAMETERS: lv_bpumn TYPE bpumn.
+* Einkaufsorganisation
+PARAMETERS: lv_ekorg TYPE ekorg.
+* Werk
+PARAMETERS: lv_werks TYPE werks.
+* Typ des Einkaufsinfosatzes
+* 0 Normal
+* 2 Konsignation
+* 3 Lohnbearbeitung
+* P Pipeline
+* 1 Chargeable
+PARAMETERS: lv_esokz TYPE esokz.
+* Planlieferzeit in Tagen
+PARAMETERS: lv_plifz TYPE plifz.
+* Einkäufergruppe
+PARAMETERS: lv_bkgrp TYPE bkgrp.
+* Umsatzsteuerkennzeichen
+PARAMETERS: lv_mwskz TYPE mwskz.
+* Nettopreis
+PARAMETERS: lv_netpr TYPE iprei.
+* Währung
+PARAMETERS: lv_waers TYPE waers.
+
+
+START-OF-SELECTION.
+
+  DATA lt_condition TYPE STANDARD TABLE OF mewicondition.
+  DATA lt_validity  TYPE STANDARD TABLE OF mewivalidity.
+
+  DATA(ls_eina) = VALUE mewieina( info_rec  = lv_infnr
+                                  material  = lv_matnr
+                                  vendor    = lv_lifnr
+                                  base_uom  = lv_meins
+                                  po_unit   = lv_bstme
+                                  conv_num1 = lv_bpumz
+                                  conv_den1 = lv_bpumn ).
+
+  DATA(ls_einax) = VALUE mewieinax( info_rec  = lv_creat " neuen Infosatz anlegen?
+                                    material  = 'X'
+                                    vendor    = 'X'
+                                    base_uom  = 'X'
+                                    po_unit   = 'X'
+                                    conv_num1 = 'X'
+                                    conv_den1 = 'X' ).
+
+  DATA(ls_eine) = VALUE mewieine( info_rec   = lv_infnr
+                                  purch_org  = lv_ekorg
+                                  plant      = lv_werks
+                                  info_type  = lv_esokz
+                                  conv_num1  = lv_bpumz
+                                  conv_den1  = lv_bpumn
+                                  plnd_delry = lv_plifz
+                                  pur_group  = lv_bkgrp
+                                  tax_code   = lv_mwskz
+                                  nrm_po_qty = lv_norbm
+                                  net_price  = lv_netpr
+                                  currency   = lv_waers ).
+
+  DATA(ls_einex) = VALUE mewieinex( info_rec   = lv_creat " neuen Infosatz anlegen?
+                                    purch_org  = 'X'
+                                    plant      = 'X'
+                                    info_type  = 'X'
+                                    conv_num1  = 'X'
+                                    conv_den1  = 'X'
+                                    plnd_delry = 'X'
+                                    pur_group  = 'X'
+                                    tax_code   = 'X'
+                                    nrm_po_qty = 'X'
+                                    net_price  = 'X'
+                                    currency   = 'X' ).
+
+  DATA(it_return) = VALUE mewi_t_return( ).
+
+
+  DATA(ls_condition) = VALUE mewicondition( cond_type = 'PB00'
+                                               cond_value = 10
+                                               currency = 'EUR'
+                                               cond_unit = 'EA'
+                                               numerator = 1
+                                               denominator = 1
+                                               cond_p_unt = 1
+                                               calctypcon = 'C' ).
+  APPEND ls_condition TO lt_condition.
+
+  DATA(ls_validity) = VALUE mewivalidity( plant = lv_werks
+                                          valid_from = sy-datum
+                                          valid_to   = '22221231' ).
+
+  APPEND ls_validity TO lt_validity.
+
+
+* RFC Function Module to Create and Change Info Record
+  CALL FUNCTION 'ME_INFORECORD_MAINTAIN'
+    EXPORTING
+      i_eina  = ls_eina
+      i_einax = ls_einax
+      i_eine  = ls_eine
+      i_einex = ls_einex
+      testrun = lv_test
+* IMPORTING
+*     E_EINA  =
+*     E_EINE  =
+    TABLES
+*     TXT_LINES              =
+*     COND_VALIDITY          = lt_validity
+*     CONDITION              = lt_condition
+*     COND_SCALE_VALUE       =
+*     COND_SCALE_QUAN        =
+      return  = it_return.
+
+  BREAK-POINT.
+
+* Fehlerauswertung
+  DATA(lv_message) = ||.
+
+  LOOP AT it_return INTO DATA(ls_return) WHERE type CA 'AEX'.
+    IF lv_message IS INITIAL.
+      lv_message = ls_return-message.
+    ELSE.
+      lv_message = |{ lv_message }/{ ls_return-message }|.
+    ENDIF.
+  ENDLOOP.
+
+  IF lv_message IS INITIAL.
+    DATA(lv_return) = VALUE bapiret2( ).
+* alles ok: COMMIT
+    CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+      EXPORTING
+        wait   = 'X'
+      IMPORTING
+        return = lv_return.
+  ELSE.
+* bei Fehlern: ROLLBACK
+    CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+  ENDIF.
