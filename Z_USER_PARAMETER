@@ -1,0 +1,36 @@
+*&---------------------------------------------------------------------*
+*& Report Z_USER_PARAMETER
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT z_user_parameter.
+
+*----------------------------------------------------------------------*
+*      Data Declaration
+*----------------------------------------------------------------------*
+DATA: gt_parameters  TYPE ustyp_t_parameters.
+
+*----------------------------------------------------------------------*
+*      start-of-selection
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  CALL FUNCTION 'SUSR_USER_PARAMETERS_GET'
+    EXPORTING
+      user_name           = sy-uname
+      with_text           = 'X'
+    TABLES
+      user_parameters     = gt_parameters
+    EXCEPTIONS
+      user_name_not_exist = 1
+      OTHERS              = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+*--------------------------------------------------------------------*
+* Display
+*--------------------------------------------------------------------*
+  cl_demo_output=>display_data( gt_parameters ).
