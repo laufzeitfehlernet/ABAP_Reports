@@ -1,0 +1,25 @@
+REPORT z_demo_output.
+
+SELECT * FROM ltak INTO TABLE @DATA(ltak_values).
+
+*--------------------------------------------------------------------*
+* Usually you can display via class cl_demo_output like this
+* cl_demo_output=>display( ltak_values ).
+* But you can force the fullscreen mode via this way
+*--------------------------------------------------------------------*
+
+* Objects to be displayed
+cl_demo_output=>write_data( ltak_values ).
+
+* Get HTML-Code from Demo-Output
+DATA(lv_html) = cl_demo_output=>get( ).
+
+
+* show Data in Inline Browser in SAP
+cl_abap_browser=>show_html( EXPORTING
+                              title        = 'Your data'
+                              html_string  = lv_html
+                              container    = cl_gui_container=>default_screen ).
+
+* force cl_gui_container=>default_screen
+WRITE: space.
